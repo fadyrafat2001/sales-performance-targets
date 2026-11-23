@@ -1,0 +1,13 @@
+// UNEXECUTED DAX. Create each definition as a separate measure.
+
+Net Sales EGP = SUM(FactSales[Gross_EGP]) - SUM(FactSales[Discount_EGP])
+
+Target EGP = SUM(FactTarget[Target_EGP])
+
+Target EGP Safe = IF(ISFILTERED(FactSales[Salesperson]) || ISINSCOPE(FactSales[Salesperson]), BLANK(), [Target EGP])
+
+Attainment Pct = DIVIDE([Net Sales EGP], [Target EGP Safe])
+
+Sales Gap EGP = IF(ISBLANK([Target EGP Safe]), BLANK(), [Net Sales EGP] - [Target EGP Safe])
+
+Sales Transaction Count = COUNTROWS(FactSales)

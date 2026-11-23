@@ -1,0 +1,124 @@
+# Sales performance versus targets
+
+Status: synthetic source assets only, no executed Power BI report. Prepared with assistant support. Not prior independent work.
+
+## Business question
+Which month, region and channel missed or exceeded target, without repeating targets by salesperson?
+
+## Data and model
+37 synthetic sales transactions. Target: 13 unique Month/Region/Channel rows. Targets are not allocated to salesperson. One Web/Online segment deliberately has a zero target and EGP 3,000 sales. Month is an accounting period, not a daily date.
+
+## Relationships
+DimMonth, DimRegion and DimChannel each filter BOTH facts, active 1:* single direction. Six relationships. Do not join targets to sales. Salesperson is detail in FactSales only, not a shared target dimension.
+
+## Import and implementation
+Open the accompanying XLSX in Power BI Desktop using Get data > Excel > Transform Data, or use Queries.pq with the WorkbookPath parameter. Each commented query block is a separate query, not one script to paste wholesale. Load only the named data sheets. Set explicit data types; parse dates with en-US where applicable. Remove auto-created relationships, then create the specified ones. Add DAX measures individually and format ratios as percentages, money as EGP. Hide unused fact columns and use dimension fields for filters.
+
+## Report pages
+Overview: sales/target/gap/attainment cards, monthly comparison and region/channel matrix. Detail: sales transactions and salesperson contribution, with no salesperson target comparison. QA: zero-target segment returns BLANK attainment; salesperson filtering returns BLANK target/gap/attainment. Shared-dimension totals reconcile to acceptance values.
+
+## Tests
+Expected_Results.json was independently calculated from these inputs in Python. M/DAX have NOT been executed. Match whole-dataset results and relevant filters before calling the report complete. Check each dimension key is unique and non-null; each fact key matches a dimension; required numeric inputs have no nulls or errors. No silent replacement of missing values with zero. Test slicers, clear-all, cross-highlighting, tooltip and drill-through, and confirm totals do not duplicate after relationships. Save PBIX and capture report + Model view; record Desktop version, refresh date and test results.
+
+## Limits
+No salesperson target is supplied. Use Target EGP Safe in visuals to hide target/gap/attainment when a salesperson is filtered. The raw Target EGP measure is for QA or shared dimensions only. A zero target returns blank attainment, but sales and gap remain visible. No forecasts, seasonality, growth or causal claims. Currency EGP; no taxes or returns.
+
+## Sources for implementation
+https://learn.microsoft.com/en-us/power-bi/guidance/star-schema
+https://learn.microsoft.com/en-us/dax/sumx-function-dax
+
+
+Sale_ID unique transaction; Month period; Region/Channel shared dimension keys; Salesperson sales-only detail; Gross_EGP and Discount_EGP transaction amounts; Target_EGP monthly Region/Channel planned net-sales amount.
+
+
+{
+  "sales_rows": 37,
+  "target_rows": 13,
+  "net_sales_egp": "639860.00",
+  "target_egp": 624000,
+  "gap_egp": "15860.00",
+  "attainment_ratio": "1.025416666666666666666666667",
+  "zero_target_segment_sales_egp": 3000,
+  "zero_target_attainment": "BLANK, not 0% or infinity"
+}
+
+{
+  "2026-07": {
+    "net_sales": "195180.00",
+    "target": 188000,
+    "gap": "7180.00"
+  },
+  "2026-08": {
+    "net_sales": "219780.00",
+    "target": 208000,
+    "gap": "11780.00"
+  },
+  "2026-09": {
+    "net_sales": "224900.00",
+    "target": 228000,
+    "gap": "-3100.00"
+  }
+}
+
+EXACT UNEXECUTED M SOURCE
+// UNEXECUTED M SOURCE. Create text parameter WorkbookPath with full local XLSX path.
+// Create this function as fxSheet; invoke it once per data sheet below.
+(sheetName as text) as table =>
+let
+    Source = Excel.Workbook(File.Contents(WorkbookPath), null, true),
+    Data = Source{[Item=sheetName, Kind="Sheet"]}[Data],
+    Headers = Table.PromoteHeaders(Data, [PromoteAllScalars=true])
+in
+    Headers
+
+// Separate query named FactSales:
+let
+    Source = fxSheet("FactSales"),
+    Typed = Table.TransformColumnTypes(Source, {{"Sale_ID", type text}, {"Month", type text}, {"Region", type text}, {"Channel", type text}, {"Salesperson", type text}, {"Gross_EGP", type number}, {"Discount_EGP", type number}}, "en-US")
+in
+    Typed
+
+// Separate query named FactTarget:
+let
+    Source = fxSheet("FactTarget"),
+    Typed = Table.TransformColumnTypes(Source, {{"Month", type text}, {"Region", type text}, {"Channel", type text}, {"Target_EGP", type number}}, "en-US")
+in
+    Typed
+
+// Separate query named DimMonth:
+let
+    Source = fxSheet("DimMonth"),
+    Typed = Table.TransformColumnTypes(Source, {{"Month", type text}}, "en-US")
+in
+    Typed
+
+// Separate query named DimRegion:
+let
+    Source = fxSheet("DimRegion"),
+    Typed = Table.TransformColumnTypes(Source, {{"Region", type text}}, "en-US")
+in
+    Typed
+
+// Separate query named DimChannel:
+let
+    Source = fxSheet("DimChannel"),
+    Typed = Table.TransformColumnTypes(Source, {{"Channel", type text}}, "en-US")
+in
+    Typed
+
+
+
+EXACT UNEXECUTED DAX SOURCE
+// UNEXECUTED DAX. Create each definition as a separate measure.
+
+Net Sales EGP = SUM(FactSales[Gross_EGP]) - SUM(FactSales[Discount_EGP])
+
+Target EGP = SUM(FactTarget[Target_EGP])
+
+Target EGP Safe = IF(ISFILTERED(FactSales[Salesperson]) || ISINSCOPE(FactSales[Salesperson]), BLANK(), [Target EGP])
+
+Attainment Pct = DIVIDE([Net Sales EGP], [Target EGP Safe])
+
+Sales Gap EGP = IF(ISBLANK([Target EGP Safe]), BLANK(), [Net Sales EGP] - [Target EGP Safe])
+
+Sales Transaction Count = COUNTROWS(FactSales)
